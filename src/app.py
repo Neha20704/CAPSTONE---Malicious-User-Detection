@@ -6,6 +6,11 @@ import pickle
 import numpy as np
 import re
 from tensorflow.keras.models import load_model
+from visualizations import (
+    plot_anomaly_distribution,
+    plot_model_predictions,
+    plot_time_series
+)
 
 # --- Utility Functions ---
 
@@ -155,6 +160,12 @@ if uploaded_file:
     # Show top anomalies
     st.subheader("Top anomalies")
     st.dataframe(df_features[df_features["final_anomaly"]].head(10))
+
+    # 🔍 Visualizations
+    plot_anomaly_distribution(df_features)
+    plot_model_predictions(df_features)
+    plot_time_series(df_features)
+
 
     # Download CSV
     csv = df_features.to_csv(index=False).encode('utf-8')
