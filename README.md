@@ -1,16 +1,13 @@
-# Project Title
-Got it ✅ — based on everything you’ve told me about your **Capstone: Malicious User Detection** project (email-based insider threat detection, ML models, Streamlit dashboard, etc.), here’s a **ready-to-use `README.md`** for your repo:
+# Capstone: Malicious User Detection
 
----
-
-# 🚨 Malicious User Detection (Capstone Project)
+#  Malicious User Detection (Capstone Project)
 
 This project detects **insider threats** and **malicious email behavior** using the Enron email dataset.
 It combines **machine learning models**, **NLP preprocessing**, and a **Streamlit web app** for interactive anomaly analysis.
 
 ---
 
-## 📌 Features
+## Features
 
 * **Email Preprocessing & Feature Engineering**
 
@@ -42,7 +39,7 @@ It combines **machine learning models**, **NLP preprocessing**, and a **Streamli
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 .
@@ -70,16 +67,16 @@ It combines **machine learning models**, **NLP preprocessing**, and a **Streamli
 
 ---
 
-## ⚙️ Setup Instructions
+## Setup Instructions
 
-### 1️⃣ Clone the repo
+### 1 Clone the repo
 
 ```bash
 git clone https://github.com/Neha20704/CAPSTONE-Malicious-User-Detection.git
 cd CAPSTONE-Malicious-User-Detection
 ```
 
-### 2️⃣ Install dependencies
+### 2️ Install dependencies
 
 ```bash
 python -m venv venv
@@ -89,7 +86,7 @@ venv\Scripts\activate      # (Windows)
 pip install -r requirements.txt
 ```
 
-### 3️⃣ Run the Streamlit app
+### 3️ Run the Streamlit app
 
 ```bash
 streamlit run src/app.py
@@ -97,7 +94,7 @@ streamlit run src/app.py
 
 ---
 
-## 📊 How It Works
+## How It Works
 
 1. **Upload raw email CSV** into the app.
 2. **Feature extraction** (text cleaning, NLP, sentiment, metadata).
@@ -106,7 +103,7 @@ streamlit run src/app.py
 
 ---
 
-## 🧪 Models Used
+##  Models Used
 
 * **Isolation Forest** → detects outliers based on communication patterns.
 * **One-Class SVM** → identifies deviations from normal behavior.
@@ -115,15 +112,15 @@ streamlit run src/app.py
 
 ---
 
-## 📈 Example Output
+## Example Output
 
-* ✅ Normal email → low anomaly score
-* ⚠️ Suspicious email → flagged by one or more models
-* 🚨 Malicious email → high anomaly score + multiple threat indicators
+*  Normal email → low anomaly score
+* Suspicious email → flagged by one or more models
+*  Malicious email → high anomaly score + multiple threat indicators
 
 ---
 
-## 👩‍💻 Team
+##  Team
 Developed by:
 **Naru Meghana PES2UG22CS341**
 **Neha Girish PES2UG22CS346**
@@ -131,6 +128,3 @@ Developed by:
 **Shivprakash G PES2UG23CS822**
 
 ---
-
-Would you like me to make this README **lightweight for GitHub** (no dataset/model details since you’re ignoring them),
-or **full academic style** (with methodology + evaluation results)?
