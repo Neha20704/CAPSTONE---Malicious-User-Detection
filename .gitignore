@@ -1,2 +1,6 @@
-enron_recleaned.csv
-.venv/
+#Python env
+venv/
+#data
+data/
+#models
+models/
