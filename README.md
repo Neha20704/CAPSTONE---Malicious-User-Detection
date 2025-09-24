@@ -22,7 +22,6 @@ It combines **machine learning models**, **NLP preprocessing**, and a **Streamli
   * Isolation Forest
   * One-Class SVM
   * Autoencoder (Keras)
-  * Random Forest (baseline classifier)
 
 * **Anomaly Detection**
 
