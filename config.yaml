@@ -1,0 +1,107 @@
+# ======================================================
+# CONFIGURATION FILE — Malicious User Detection (Enron)
+# ======================================================
+
+# ------------------------------
+# PATHS
+# ------------------------------
+paths:
+  base_dir: "D:/neha/SEM_7/capstone/malicious-user-detection"
+  data_dir: "D:/neha/SEM_7/capstone/malicious-user-detection/data"
+  models_dir: "D:/neha/SEM_7/capstone/malicious-user-detection/models/models_2"
+  notebooks_dir: "D:/neha/SEM_7/capstone/malicious-user-detection/notebooks"
+  src_dir: "D:/neha/SEM_7/capstone/malicious-user-detection/src"
+  reports_dir: "D:/neha/SEM_7/capstone/malicious-user-detection/reports"
+
+files:
+  # Data files
+  raw_enron: "enron_recleaned.csv"
+  system_logs: "system_logs.csv"
+  uba_results: "enron_anomaly_predictions.csv"
+  correlated_risk: "final_correlated_risk.csv"
+  test_emails: "TestEmails.csv"
+  compressed_emails: "compressed_emails.csv"
+
+  # Model files
+  autoencoder: "autoencoder_model.keras"
+  ocsvm: "ocsvm.pkl"
+  isolation_forest: "isolation_forest.pkl"
+  scaler: "scaler.pkl"
+  imputer: "simple_imputer.pkl"
+  tfidf_vectorizer: "tfidf_vectorizer.pkl"
+  feature_columns: "feature_columns.pkl"
+
+# ------------------------------
+# DATA PREPROCESSING
+# ------------------------------
+preprocessing:
+  text_column: "cleaned_message"
+  sender_column: "from"
+  receiver_column: "to"
+  date_column: "date"
+  subject_column: "subject"
+  remove_stopwords: true
+  lowercase: true
+  min_word_length: 3
+  max_len: 5000
+
+# ------------------------------
+# NLP SETTINGS
+# ------------------------------
+nlp:
+  vectorizer: "tfidf"             # Options: tfidf, count, word2vec
+  max_features: 3000
+  ngram_range: [1, 2]
+  sentiment_model: "vader"
+  keywords:
+    - password
+    - credentials
+    - access
+    - confidential
+    - resignation
+    - termination
+    - illegal
+    - private
+    - leak
+    - deal
+    - project x
+
+# ------------------------------
+# COMMUNICATION RISK ANALYSIS
+# ------------------------------
+communication:
+  enable: true
+  sender_field: "from"
+  receiver_field: "to"
+  message_field: "cleaned_message"
+  weight_messages_sent: 0.5
+  weight_unique_receivers: 0.5
+
+# ------------------------------
+# UBA + COMM CORRELATION
+# ------------------------------
+uba_correlation:
+  base_risk_weight: 0.6
+  comm_risk_weight: 0.4
+  normalize: true
+  top_n_display: 20
+  save_csv: true
+
+# ------------------------------
+# DASHBOARD / APP CONFIG
+# ------------------------------
+app:
+  host: "127.0.0.1"
+  port: 8080
+  debug: true
+  default_user_limit: 20
+  theme: "dark"
+
+# ------------------------------
+# SYSTEM SETTINGS
+# ------------------------------
+system:
+  random_seed: 42
+  log_level: "INFO"
+  environment: "local"
+  colab_mode: false
