@@ -19,11 +19,14 @@ import io
 import matplotlib.pyplot as plt
 import seaborn as sns
 from joblib import load
+from datetime import datetime
 import pickle
 from tensorflow.keras.models import load_model
 from typing import List
 # ---  Federated Privacy Layer (Simulation) ---
 from federated.coordinator import federated_aggregate
+from utils.evaluation_module import evaluate_models
+
 
 # -------------------------
 # Config / constants
@@ -49,6 +52,44 @@ UBA_WEIGHT = 0.3
 # -------------------------
 # Utility functions
 # -------------------------
+
+# --- PREPROCESS UPLOADED EMAILS (handles both structured + raw) ---
+def preprocess_uploaded_emails(df):
+    """Normalize uploaded email dataframe to ensure required columns exist."""
+    if "message" not in df.columns:
+        st.error("❌ Email CSV must contain at least a 'message' column.")
+        return df
+
+    # 1️⃣ Extract headers if they exist inside raw message text
+    parsed = df["message"].apply(parse_email_metadata).apply(pd.Series)
+    for c in parsed.columns:
+        if c not in df.columns:
+            df[c] = parsed[c]
+
+    # 2️⃣ Clean message text
+    df["cleaned_message"] = df["message"].apply(clean_text)
+
+    # 3️⃣ Fill missing header fields if absent
+    for col in ["from", "to", "cc", "bcc", "date", "subject"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    # 4️⃣ Normalize sender to a user_key
+    df["user_key"] = df["from"].apply(normalize_user_key)
+
+    # 5️⃣ Fill any NaNs safely
+    df.fillna("", inplace=True)
+
+    return df
+
+
+
+def extract_field(text, field_name):
+    """Naive pattern for header extraction from raw text"""
+    match = re.search(rf"{field_name}:\s*(.*)", text, re.IGNORECASE)
+    return match.group(1).strip() if match else None
+
+
 def clean_text(text: str) -> str:
     """Simple cleaning used by app (safe for already-cleaned text too)."""
     if pd.isna(text):
@@ -278,7 +319,7 @@ def extract_nlp_features(nlp_df: pd.DataFrame, vectorizer, imputer, feature_cols
 # -------------------------
 # Inference helpers
 # -------------------------
-def run_models_and_ensemble(features: pd.DataFrame, models: dict):
+def run_models_and_ensemble(features: pd.DataFrame, models: dict,return_all: bool =False):
     """Run ocsvm, isolation forest and autoencoder and produce:
        - final_pred boolean per row (majority vote)
        - anomaly score (0..1) computed from normalized components
@@ -340,7 +381,19 @@ def run_models_and_ensemble(features: pd.DataFrame, models: dict):
         votes = [iso_pred[i] == -1, (svm_pred[i] == -1), (auto_pred[i] == 1)]
         final_bool.append(sum(votes) >= 2)
 
-    return np.array(final_bool, dtype=bool), anomaly_score
+    #return np.array(final_bool, dtype=bool), anomaly_score
+    if return_all:
+        # Return all internal signals for model evaluation tab
+        return (
+            np.array(final_bool, dtype=bool),
+            anomaly_score,
+            ae_norm,
+            svm_norm,
+            iso_norm
+        )
+    else:
+        # Default return (for production inference)
+        return np.array(final_bool, dtype=bool), anomaly_score
 
 # -------------------------
 # Simple plotting helpers (Streamlit-friendly)
@@ -376,8 +429,8 @@ st.title("Enron Insider Threat Detection — NLP + UBA (Unified)")
 
 st.markdown("""
 Upload:
-- **Email CSV** (system_logs / NLP dataset) — columns: `file, message, from, to, cc, bcc, date, subject, cleaned_message`  
-- **UBA CSV** (enron_recleaned / UBA dataset) — columns: `timestamp, user, event_type, resource, action_status, device, location, severity_score`
+- **Email CSV** (system_logs / NLP dataset) — columns: (unstructured) `file, message` (or structured) `file, message, from, to, cc, bcc, date, subject, cleaned_message`  
+- **UBA CSV** (enron_recleaned / UBA dataset) — columns: (structured) `timestamp, user, event_type, resource, action_status, device, location, severity_score`
 """)
 
 with st.sidebar:
@@ -411,8 +464,11 @@ if uploaded_email and uploaded_uba:
     scaler = artifacts["scaler"]
 
     # read csvs (safe)
-    try:
-        email_df = pd.read_csv(uploaded_email, engine="python", on_bad_lines="skip")
+    try:  
+        email_df = pd.read_csv(uploaded_email, engine="python", on_bad_lines="skip")      
+        # --- Apply preprocessor ---
+        email_df = preprocess_uploaded_emails(email_df)
+
     except Exception as e:
         st.error(f"Failed to read uploaded email CSV: {e}")
         st.stop()
@@ -460,14 +516,28 @@ if uploaded_email and uploaded_uba:
             except Exception:
                 st.warning("Scaler transform skipped (incompatible). Proceeding without scaler.")
 
+    # ---- Replace this entire block in your file ----
     st.info("Running model inference (OCSVM, IsolationForest, Autoencoder)...")
     try:
-        final_bool, anomaly_scores = run_models_and_ensemble(features, {
-            "ocsvm": ocsvm, "iso": iso, "autoencoder": autoencoder
-        })
+        # Run models and capture all normalized component scores for evaluation
+        final_bool, anomaly_scores, ae_norm, svm_norm, iso_norm = run_models_and_ensemble(
+            features,
+            {"ocsvm": ocsvm, "iso": iso, "autoencoder": autoencoder},
+            return_all=True
+        )
+
+        # Persist outputs so other tabs (Model Evaluation) can access them across reruns
+        st.session_state["final_bool"] = final_bool
+        st.session_state["anomaly_scores"] = anomaly_scores
+        st.session_state["ae_norm"] = ae_norm
+        st.session_state["svm_norm"] = svm_norm
+        st.session_state["iso_norm"] = iso_norm
+
     except Exception as e:
         st.error("Model inference failed: " + str(e))
         st.stop()
+    # ---- end replacement ----
+
 
     nlp_df["final_anomaly"] = final_bool
     nlp_df["anomaly_score"] = anomaly_scores
@@ -530,38 +600,11 @@ if uploaded_email and uploaded_uba:
         on="user_key",
         how="left"
     )
-    # -------------------------
-    # Federated Privacy call (in-app version)
-    # -------------------------
-    merged_fed = None
-    try:
-        st.markdown("### 🛡️ Running Federated Privacy Aggregation")
-
-        # Pass the already processed dataframes
-        merged_fed = federated_aggregate(
-            emails_df=final_df,     # your NLP results dataframe
-            system_logs_df=uba_df   # your UBA/system logs dataframe
-        )
-
-        if merged_fed is not None and not merged_fed.empty:
-            st.success(f"✅ Federated aggregation completed for {len(merged_fed)} users.")
-            st.dataframe(
-                merged_fed.sort_values("federated_risk", ascending=False).head(15)
-            )
-            st.markdown("**Top Federated Risky Users**")
-            st.bar_chart(
-                merged_fed.sort_values("federated_risk", ascending=False).set_index("user")["federated_risk"].head(10)
-            )
-        else:
-            st.warning("Federated aggregation returned no matching users. Check user IDs or keys.")
-
-    except Exception as e:
-        st.error(f"Federated aggregation failed: {e}")
 
     # -------------------------
     # UI Tabs and outputs
     # -------------------------
-    tab1, tab2, tab3, tab4  = st.tabs(["NLP Anomalies", "UBA Overview", "Combined Risk","Federated Privacy"])
+    tab1, tab2, tab3, tab4,tab5  = st.tabs(["NLP Anomalies", "UBA Overview", "Combined Risk","Federated Privacy", "Model Evaluation"])
 
     with tab1:
         st.subheader("Top NLP anomalies (message-level)")
@@ -574,7 +617,7 @@ if uploaded_email and uploaded_uba:
     with tab2:
         st.subheader("UBA aggregated (user-level)")
         st.dataframe(uba_agg.sort_values("final_risk", ascending=False).head(50))
-        st.markdown("###Top UBA risky users")
+        st.markdown("### Top UBA risky users")
         st.dataframe(
             uba_agg.sort_values("final_risk", ascending=False)
             [["user", "avg_severity_norm", "final_risk"]]
@@ -590,14 +633,101 @@ if uploaded_email and uploaded_uba:
         plot_top_users(merged, k=15)
 
     with tab4:
-        st.subheader("Federated Privacy Aggregation")
-        if merged_fed is not None:
-            st.dataframe(merged_fed.sort_values("federated_risk", ascending=False).head(30))
-            st.markdown("**Combined Federated Risk (NLP + UBA)**")
-            plot_top_users(merged_fed, k=15)
+        st.subheader("🛡️ Federated Privacy Aggregation")
+
+        try:
+            # -------------------------------------------
+            # Run federated privacy aggregation
+            # -------------------------------------------
+            st.markdown("### Running Federated Privacy Aggregation")
+
+            merged_fed = federated_aggregate(
+                emails_df=final_df,     # NLP results dataframe
+                system_logs_df=uba_df   # UBA/system logs dataframe
+            )
+
+            # -------------------------------------------
+            # Visualization and summary
+            # -------------------------------------------
+            if merged_fed is not None and not merged_fed.empty:
+                st.success(f"✅ Federated aggregation completed for {len(merged_fed)} users.")
+                
+                # Show top 30 risky users
+                st.dataframe(
+                    merged_fed.sort_values("federated_risk", ascending=False).head(30)
+                )
+
+                # Plot top risky users
+                st.markdown("**📊 Combined Federated Risk (NLP + UBA)**")
+                plot_top_users(merged_fed, k=15)
+
+                # Optional: simple bar chart version
+                st.markdown("**Top Federated Risky Users (Bar Chart)**")
+                st.bar_chart(
+                    merged_fed.sort_values("federated_risk", ascending=False)
+                    .set_index("user")["federated_risk"]
+                    .head(10)
+                )
+
+            else:
+                st.warning("⚠️ Federated aggregation returned no matching users. Check user IDs or keys.")
+
+        except Exception as e:
+            st.error(f"Federated aggregation failed: {e}")
+
+    with tab5:
+        # --- Tab 5: Model Evaluation (Quantitative + Qualitative) ---
+        st.subheader("📈 Model Evaluation (Grid + Stacking + Bootstrap)")
+
+        # Retrieve stored model outputs from previous run
+        if all(k in st.session_state for k in ["ae_norm", "svm_norm", "iso_norm"]):
+            ae_norm = st.session_state["ae_norm"]
+            svm_norm = st.session_state["svm_norm"]
+            iso_norm = st.session_state["iso_norm"]
         else:
-            st.warning("Federated results unavailable.")
-    
+            st.warning("⚠️ Run the anomaly detection tab first to generate model outputs.")
+            st.stop()
+
+        # ---------------- Validation Mode Selector ----------------
+        st.markdown("Select how you want to validate the ensemble results:")
+
+        validation_options = {
+            "Synthetic (Quantitative)": False,
+            "Real-World (Qualitative)": True
+        }
+        validation_mode = st.radio("Validation Type:", list(validation_options.keys()))
+        real_world = validation_options[validation_mode]
+
+        st.write(f"🔍 Selected mode: {validation_mode} | real_world flag = {real_world}")
+
+        # ---------------- Synthetic / Quantitative Validation ----------------
+        if not real_world:
+            # ✅ Synthetic mode must have labels
+            if not any(col in nlp_df.columns for col in ["is_anomaly", "label", "ground_truth"]):
+                raise ValueError("Synthetic dataset missing labels — cannot compute accuracy or precision.")
+
+            # Use actual label column
+            labels = nlp_df.get("is_anomaly", nlp_df.get("label", nlp_df.get("ground_truth")))
+
+
+            # 🧮 Evaluate quantitatively
+            results = evaluate_models(
+                ae=ae_norm, svm=svm_norm, iso=iso_norm,
+                nlp=nlp_df, uba=merged,
+                y_true=labels,
+                streamlit=True, real_world=False
+            )
+
+        # ---------------- Real-World / Qualitative Validation ----------------
+        else:
+            # ✅ Real-world mode — unlabeled, qualitative only
+            results = evaluate_models(
+                ae=ae_norm, svm=svm_norm, iso=iso_norm,
+                nlp=nlp_df, uba=merged,
+                streamlit=True, real_world=True
+            )
+
+
     # -------------------------
     # Download / Save
     # -------------------------
